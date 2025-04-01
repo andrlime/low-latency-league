@@ -19,11 +19,11 @@ uint32_t process_orders(Order &order, OrderMap &ordersMap, Condition cond) {
     auto &ordersAtPrice = it->second;
     for (auto orderIt = ordersAtPrice.begin();
          orderIt != ordersAtPrice.end() && order.quantity > 0;) {
-      QuantityType trade = std::min(order.quantity, orderIt->quantity);
+      QuantityType trade = std::min(order.quantity, orderIt->second.quantity);
       order.quantity -= trade;
-      orderIt->quantity -= trade;
+      orderIt->second.quantity -= trade;
       ++matchCount;
-      if (orderIt->quantity == 0)
+      if (orderIt->second.quantity == 0)
         orderIt = ordersAtPrice.erase(orderIt);
       else
         ++orderIt;
@@ -44,12 +44,12 @@ uint32_t match_order(Orderbook &orderbook, const Order &incoming) {
     // For a BUY, match with sell orders priced at or below the order's price.
     matchCount = process_orders(order, orderbook.sellOrders, std::less<>());
     if (order.quantity > 0)
-      orderbook.buyOrders[order.price].push_back(order);
+      orderbook.buyOrders[order.price].insert({order.id, order});
   } else { // Side::SELL
     // For a SELL, match with buy orders priced at or above the order's price.
     matchCount = process_orders(order, orderbook.buyOrders, std::greater<>());
     if (order.quantity > 0)
-      orderbook.sellOrders[order.price].push_back(order);
+      orderbook.sellOrders[order.price].insert({order.id, order});
   }
   return matchCount;
 }
@@ -59,20 +59,17 @@ template <typename OrderMap>
 bool modify_order_in_map(OrderMap &ordersMap, IdType order_id,
                          QuantityType new_quantity) {
   for (auto it = ordersMap.begin(); it != ordersMap.end();) {
-    auto &orderList = it->second;
-    for (auto orderIt = orderList.begin(); orderIt != orderList.end();) {
-      if (orderIt->id == order_id) {
-        if (new_quantity == 0)
-          orderIt = orderList.erase(orderIt);
-        else {
-          orderIt->quantity = new_quantity;
-          return true;
-        }
-      } else {
-        ++orderIt;
-      }
+    auto &orderIdMap = it->second;
+    auto theOrder = orderIdMap.find(order_id);
+    if (theOrder != orderIdMap.end()) {
+      if (new_quantity == 0)
+        orderIdMap.erase(theOrder);
+      else
+        theOrder->second.quantity = new_quantity;
+      return true;
     }
-    if (orderList.empty())
+    
+    if (orderIdMap.empty())
       it = ordersMap.erase(it);
     else
       ++it;
@@ -90,13 +87,10 @@ void modify_order_by_id(Orderbook &orderbook, IdType order_id,
 
 template <typename OrderMap>
 std::optional<Order> lookup_order_in_map(OrderMap &ordersMap, IdType order_id) {
-  for (const auto &[price, orderList] : ordersMap) {
-    auto it = std::find_if(orderList.begin(), orderList.end(),
-                           [order_id](const Order &order) {
-                             return order.id == order_id;
-                           });
-    if (it != orderList.end()) {
-      return *it;
+  for (const auto &[price, orderIdMap] : ordersMap) {
+    auto it = orderIdMap.find(order_id);
+    if (it != orderIdMap.end()) {
+      return it->second;
     }
   }
   return std::nullopt;
@@ -111,7 +105,7 @@ uint32_t get_volume_at_level(Orderbook &orderbook, Side side,
       return 0;
     }
     for (const auto &order : buy_orders->second) {
-      total += order.quantity;
+      total += order.second.quantity;
     }
   } else if (side == Side::SELL) {
     auto sell_orders = orderbook.sellOrders.find(quantity);
@@ -119,7 +113,7 @@ uint32_t get_volume_at_level(Orderbook &orderbook, Side side,
       return 0;
     }
     for (const auto &order : sell_orders->second) {
-      total += order.quantity;
+      total += order.second.quantity;
     }
   }
   return total;

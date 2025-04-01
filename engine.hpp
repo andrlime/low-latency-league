@@ -20,8 +20,8 @@ struct Order {
 
 // You CAN and SHOULD change this
 struct Orderbook {
-  std::map<PriceType, std::list<Order>, std::greater<PriceType>> buyOrders;
-  std::map<PriceType, std::list<Order>> sellOrders;
+  std::map<PriceType, std::map<IdType, Order>, std::greater<PriceType>> buyOrders;
+  std::map<PriceType, std::map<IdType, Order>> sellOrders;
 };
 
 extern "C" {
