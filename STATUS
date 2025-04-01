@@ -1,1 +1,3 @@
 baseline: 2170896 ns
+use std::find_if: 1978783 ns
+
