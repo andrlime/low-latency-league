@@ -91,10 +91,12 @@ void modify_order_by_id(Orderbook &orderbook, IdType order_id,
 template <typename OrderMap>
 std::optional<Order> lookup_order_in_map(OrderMap &ordersMap, IdType order_id) {
   for (const auto &[price, orderList] : ordersMap) {
-    for (const auto &order : orderList) {
-      if (order.id == order_id) {
-        return order;
-      }
+    auto it = std::find_if(orderList.begin(), orderList.end(),
+                           [order_id](const Order &order) {
+                             return order.id == order_id;
+                           });
+    if (it != orderList.end()) {
+      return *it;
     }
   }
   return std::nullopt;
