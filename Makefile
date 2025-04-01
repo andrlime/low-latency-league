@@ -7,7 +7,7 @@ all: test
 
 test: tests.cpp
 	$(CXX) $(CXXFLAGS) -o tests tests.cpp engine.cpp
-	./tests
+	@start=$$(date +%s%N); ./tests; end=$$(date +%s%N); echo "Duration: $$((end - start)) ns"
 
 submit: engine.cpp
 	$(CXX) $(CXXFLAGS) -fPIC -c engine.cpp -o engine.o
