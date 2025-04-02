@@ -8,6 +8,7 @@
 #include "orderbook.hpp"
 #include "shared.hpp"
 
+extern "C" {
 // Takes in an incoming order, matches it, and returns the number of matches
 // Partial fills are valid
 uint32_t match_order(Orderbook &orderbook, const Order &incoming);
@@ -24,3 +25,5 @@ uint32_t get_volume_at_level(Orderbook &orderbook, Side side,
 Order lookup_order_by_id(Orderbook &orderbook, IdType order_id);
 bool order_exists(Orderbook &orderbook, IdType order_id);
 Orderbook *create_orderbook();
+}
+

@@ -7,6 +7,7 @@
 // Templated helper to process matching orders.
 // The Condition predicate takes the price level and the incoming order price
 // and returns whether the level qualifies.
+// TODO: need to update total volume
 template <typename OrderMap, typename Condition>
 uint32_t process_orders(Order &order, OrderMap &ordersMap, Condition cond) {
   uint32_t matchCount = 0;
@@ -26,6 +27,7 @@ uint32_t process_orders(Order &order, OrderMap &ordersMap, Condition cond) {
       QuantityType trade = std::min(order.quantity, orderIt->quantity);
       order.quantity -= trade;
       orderIt->quantity -= trade;
+      ordersAtPrice.total_volume -= trade;
       ++matchCount;
       if (orderIt->quantity == 0) { [[unlikely]]
         orderIt = ordersAtPrice.erase(orderIt);
@@ -65,6 +67,7 @@ uint32_t match_order(Orderbook &orderbook, const Order &incoming) {
 }
 
 // Templated helper to cancel an order within a given orders map.
+// TODO: make this function update total volume
 template <typename OrderMap>
 bool modify_order_in_map(OrderMap &ordersMap, IdType order_id,
                          QuantityType new_quantity) {
@@ -72,10 +75,12 @@ bool modify_order_in_map(OrderMap &ordersMap, IdType order_id,
     auto &orderList = it->second;
     for (auto orderIt = orderList.begin(); orderIt != orderList.end();) {
       if (orderIt->id == order_id) {
-        if (new_quantity == 0)
+        if (new_quantity == 0) {
           orderIt = orderList.erase(orderIt);
-        else {
+        } else {
+          orderList.total_volume -= orderIt->quantity;
           orderIt->quantity = new_quantity;
+          orderList.total_volume += orderIt->quantity;
           return true;
         }
       } else {
@@ -119,17 +124,13 @@ uint32_t get_volume_at_level(Orderbook &orderbook, Side side,
     if (buy_orders == orderbook.buyOrders.end()) {
       return 0;
     }
-    for (const auto &order : buy_orders->second) {
-      total += order.quantity;
-    }
+    return buy_orders->second.total_quantity();
   } else if (side == Side::SELL) {
     auto sell_orders = orderbook.sellOrders.find(quantity);
     if (sell_orders == orderbook.sellOrders.end()) {
       return 0;
     }
-    for (const auto &order : sell_orders->second) {
-      total += order.quantity;
-    }
+    return sell_orders->second.total_quantity();
   }
   return total;
 }
