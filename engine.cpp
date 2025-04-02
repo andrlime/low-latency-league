@@ -3,9 +3,6 @@
 #include <optional>
 #include <stdexcept>
 
-// This is an example correct implementation
-// It is INTENTIONALLY suboptimal
-// You are encouraged to rewrite as much or as little as you'd like
 
 // Templated helper to process matching orders.
 // The Condition predicate takes the price level and the incoming order price
@@ -14,8 +11,15 @@ template <typename OrderMap, typename Condition>
 uint32_t process_orders(Order &order, OrderMap &ordersMap, Condition cond) {
   uint32_t matchCount = 0;
   auto it = ordersMap.begin();
-  while (it != ordersMap.end() && order.quantity > 0 &&
+
+  DEBUG("Processing orders: " << order.price << " " << order.quantity);
+  DEBUG("start_it: " << it->first);
+
+  // need to match levels 
+  auto end_it = ordersMap.end();
+  while (it != end_it && order.quantity > 0 &&
          (it->first == order.price || cond(it->first, order.price))) {
+    DEBUG("Processing level: " << it->first);
     auto &ordersAtPrice = it->second;
     for (auto orderIt = ordersAtPrice.begin();
          orderIt != ordersAtPrice.end() && order.quantity > 0;) {
@@ -23,34 +27,40 @@ uint32_t process_orders(Order &order, OrderMap &ordersMap, Condition cond) {
       order.quantity -= trade;
       orderIt->quantity -= trade;
       ++matchCount;
-      if (orderIt->quantity == 0)
+      if (orderIt->quantity == 0) { [[unlikely]]
         orderIt = ordersAtPrice.erase(orderIt);
-      else
+      } else { [[likely]]
         ++orderIt;
+      }
+
+      if (ordersAtPrice.empty()) { [[unlikely]]
+        it = ordersMap.erase(it);
+      } else {
+        ++it;
+      }
     }
-    if (ordersAtPrice.empty())
-      it = ordersMap.erase(it);
-    else
-      ++it;
   }
+
+  DEBUG("returning matchCount: " << matchCount);
   return matchCount;
 }
 
 uint32_t match_order(Orderbook &orderbook, const Order &incoming) {
   uint32_t matchCount = 0;
   Order order = incoming; // Create a copy to modify the quantity
+  
+  DEBUG("Matching order: " << order.id << " " << order.price << " "
+                           << order.quantity << " " << (int)order.side);
 
   if (order.side == Side::BUY) {
-    // For a BUY, match with sell orders priced at or below the order's price.
     matchCount = process_orders(order, orderbook.sellOrders, std::less<>());
-    if (order.quantity > 0)
-      orderbook.buyOrders[order.price].push_back(order);
   } else { // Side::SELL
-    // For a SELL, match with buy orders priced at or above the order's price.
     matchCount = process_orders(order, orderbook.buyOrders, std::greater<>());
-    if (order.quantity > 0)
-      orderbook.sellOrders[order.price].push_back(order);
   }
+  if (order.quantity > 0) { [[likely]]
+    orderbook.push_back(order);
+  }
+  
   return matchCount;
 }
 
@@ -90,13 +100,12 @@ void modify_order_by_id(Orderbook &orderbook, IdType order_id,
 
 template <typename OrderMap>
 std::optional<Order> lookup_order_in_map(OrderMap &ordersMap, IdType order_id) {
-  for (const auto &[price, orderList] : ordersMap) {
-    auto it = std::find_if(orderList.begin(), orderList.end(),
-                           [order_id](const Order &order) {
-                             return order.id == order_id;
-                           });
-    if (it != orderList.end()) {
-      return *it;
+  for (const auto &pair : ordersMap) {
+    const auto &orderList = pair.second;
+    for (const auto &order : orderList.get_orders()) {
+      if (order.id == order_id) {
+        return order;
+      }
     }
   }
   return std::nullopt;
@@ -129,11 +138,13 @@ uint32_t get_volume_at_level(Orderbook &orderbook, Side side,
 // correct
 Order lookup_order_by_id(Orderbook &orderbook, IdType order_id) {
   auto order1 = lookup_order_in_map(orderbook.buyOrders, order_id);
-  auto order2 = lookup_order_in_map(orderbook.sellOrders, order_id);
   if (order1.has_value())
     return *order1;
+  
+  auto order2 = lookup_order_in_map(orderbook.sellOrders, order_id);
   if (order2.has_value())
     return *order2;
+  
   throw std::runtime_error("Order not found");
 }
 
